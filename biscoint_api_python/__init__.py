@@ -30,10 +30,10 @@ class Biscoint:
         return self._call('meta')
 
     def get_balance(self, **kwargs):
-        pass
+        raise NotImplementedError
 
     def get_trades(self, op=None, length=None):
-        pass
+        raise NotImplementedError
 
     def get_offer(
         self,
@@ -43,10 +43,10 @@ class Biscoint:
         base: str = 'BTC',
         quote: str = 'BRL'
     ):
-        pass
+        raise NotImplementedError
 
     def confirm_offer(self, offer_id: str):
-        pass
+        raise NotImplementedError
 
     # PRIVATE
 
@@ -75,7 +75,7 @@ class Biscoint:
 
         res_json = res.json()
 
-        print(res.request.url)
+        # print(res.request.url)
 
         return res_json['data']
 
