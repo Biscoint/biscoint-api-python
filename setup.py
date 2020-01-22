@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="biscoint-api-python",
-    version="0.1.0",
+    version="0.5.0",
     author="Thiago Borges Abdnur",
     author_email="bolaum@gmail.com",
     description="Biscoint API wrapper for python",

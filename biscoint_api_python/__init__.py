@@ -1,6 +1,7 @@
 import requests
 import json
 from urllib.parse import urljoin
+import hmac
 import hashlib
 import base64
 
@@ -26,14 +27,20 @@ class Biscoint:
             'isQuote': isQuote,
         })
 
+    def get_fees(self, **kwargs):
+        return self._call('fees')
+
     def get_meta(self, **kwargs):
         return self._call('meta')
 
     def get_balance(self, **kwargs):
-        raise NotImplementedError
+        return self._call('balance', addAuth=True)
 
     def get_trades(self, op=None, length=None):
-        raise NotImplementedError
+        return self._call('trades', {
+            'op': op,
+            'length': length,
+        }, addAuth=True)
 
     def get_offer(
         self,
@@ -43,31 +50,45 @@ class Biscoint:
         base: str = 'BTC',
         quote: str = 'BRL'
     ):
-        raise NotImplementedError
+        return self._call('offer', {
+            'op': op,
+            'amount': amount,
+            'isQuote': isQuote,
+            'base': base,
+            'quote': quote,
+        }, addAuth=True)
 
     def confirm_offer(self, offer_id: str):
-        raise NotImplementedError
+        return self._call('offer', {
+            'offerId': offer_id,
+        }, addAuth=True, method='post')
 
     # PRIVATE
 
-    def _call(self, endpoint: str, params: dict = {}, method: str = 'get'):
+    def _call(self, endpoint: str, params: dict = {}, method: str = 'get', addAuth: bool = False):
+        headers = None
+
         v1_endpoint = 'v1/%s' % (endpoint)
         url = urljoin(self.api_url, v1_endpoint)
         params['request'] = v1_endpoint
 
-        signedParams = self._sign(params)
+        params = self._remove_null_params(params)
 
-        # print(signedParams)
+        # print(params)
 
-        headers = {
-            'BSCNT-APIKEY': self.api_key,
-            'BSCNT-SIGN': signedParams,
-        }
+        if addAuth:
+            signedParams = self._sign(params)
+            headers = {
+                'BSCNT-APIKEY': self.api_key,
+                'BSCNT-SIGN': signedParams,
+            }
+            # print(headers)
 
         res = requests.request(
             method=method,
             url=url,
-            params=self._normalize_params(params),
+            params=self._normalize_params(params) if method == 'get' else None,
+            data=self._normalize_params(params) if method == 'post' else None,
             headers=headers,
         )
 
@@ -80,13 +101,25 @@ class Biscoint:
         return res_json['data']
 
     def _sign(self, params: dict):
-        jsonString = json.dumps(params, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        jsonString = json.dumps(
+            params,
+            sort_keys=True,
+            separators=(',', ':'),
+        ).encode('utf-8')
         hashBuffer = base64.b64encode(jsonString)
 
         # print(jsonString)
         # print(hashBuffer)
 
-        return hashlib.sha256(hashBuffer).hexdigest()
+        sign_data = hmac.new(
+            self.api_secret.encode(),
+            hashBuffer,
+            hashlib.sha256
+        ).hexdigest()
+
+        # print(sign_data)
+
+        return sign_data
 
     def _normalize_params(self, params: dict):
         n_params = {}
@@ -97,3 +130,6 @@ class Biscoint:
                 n_params[key] = params[key]
 
         return n_params
+
+    def _remove_null_params(self, params):
+        return {k: v for k, v in params.items() if v is not None}
