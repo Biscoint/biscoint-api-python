@@ -4,6 +4,7 @@ import hmac
 import json
 from urllib.parse import urljoin
 import requests
+import time
 
 
 class Biscoint:
@@ -128,7 +129,7 @@ class Biscoint:
                         "BTC": "0.01138164"
                     }
         """
-        return self._call('balance', addAuth=True)
+        return self._call('balance', add_auth=True, method='post')
 
     def get_trades(self, op: str = None, length: int = None):
         """Gets last `length` trades. Current API default is 10.
@@ -157,7 +158,7 @@ class Biscoint:
         return self._call('trades', {
             'op': op,
             'length': length,
-        }, addAuth=True)
+        }, add_auth=True, method='post')
 
     def get_offer(
         self,
@@ -201,7 +202,7 @@ class Biscoint:
             'isQuote': isQuote,
             'base': base,
             'quote': quote,
-        }, addAuth=True)
+        }, add_auth=True, method='post')
 
     def confirm_offer(self, offer_id: str):
         """Confirms offer and execute operation.
@@ -226,36 +227,51 @@ class Biscoint:
                         "apiKeyId": "BdFABxNakZyxPwnRu"
                     }
         """
-        return self._call('offer', {
+        return self._call('offer/confirm', {
             'offerId': offer_id,
-        }, addAuth=True, method='post')
+        }, add_auth=True, method='post')
 
     # PRIVATE
 
-    def _call(self, endpoint: str, params: dict = {}, method: str = 'get', addAuth: bool = False):
-        headers = None
+    def _call(self, endpoint: str, params: dict = {}, method: str = 'get', add_auth: bool = False):
+        headers = {
+            'Content-Type': 'application/json',
+        }
+        data = None
+        nonce = 0
 
         v1_endpoint = 'v1/%s' % (endpoint)
         url = urljoin(self.api_url, v1_endpoint)
-        params['request'] = v1_endpoint
+        reqParams = self._remove_null_params(params)
 
-        params = self._remove_null_params(params)
+        # print(reqParams)
 
-        # print(params)
+        if method == 'get':
+            data = None
+            reqParams = self._normalize_params(reqParams)
 
-        if addAuth:
-            signedParams = self._sign(params)
-            headers = {
-                'BSCNT-APIKEY': self.api_key,
-                'BSCNT-SIGN': signedParams,
-            }
-            # print(headers)
+        if method == 'post':
+            data = json.dumps(
+                reqParams,
+                sort_keys=True,
+                separators=(',', ':'),
+            )
+            reqParams = None
+
+            if add_auth:
+                nonce = int(time.time() * 1000000)
+                signedParams = self._sign(endpoint, nonce, data)
+                headers['BSCNT-NONCE'] = str(nonce)
+                headers['BSCNT-APIKEY'] = self.api_key
+                headers['BSCNT-SIGN'] = signedParams
+
+        # print(headers)
 
         res = requests.request(
             method=method,
             url=url,
-            params=self._normalize_params(params) if method == 'get' else None,
-            data=self._normalize_params(params) if method == 'post' else None,
+            params=reqParams,
+            data=data,
             headers=headers,
         )
 
@@ -267,21 +283,17 @@ class Biscoint:
 
         return res_json['data']
 
-    def _sign(self, params: dict):
-        jsonString = json.dumps(
-            params,
-            sort_keys=True,
-            separators=(',', ':'),
-        ).encode('utf-8')
-        hashBuffer = base64.b64encode(jsonString)
+    def _sign(self, endpoint: str, nonce: int, data: str):
+        strToBeSigned = ('v1/%s%d%s' % (endpoint, nonce, data)).encode('utf-8')
+        hashBuffer = base64.b64encode(strToBeSigned)
 
-        # print(jsonString)
+        # print(strToBeSigned)
         # print(hashBuffer)
 
         sign_data = hmac.new(
             self.api_secret.encode(),
             hashBuffer,
-            hashlib.sha256
+            hashlib.sha384
         ).hexdigest()
 
         # print(sign_data)
